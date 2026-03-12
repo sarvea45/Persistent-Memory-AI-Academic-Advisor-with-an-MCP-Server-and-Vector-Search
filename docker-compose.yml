@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  mcp_server:
+    build:
+      context: ./mcp_server
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  agent_service:
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+    depends_on:
+      mcp_server:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - MCP_SERVER_URL=http://mcp_server:8000
+    stdin_open: true
+    tty: true
+    profiles:
+      - agent
