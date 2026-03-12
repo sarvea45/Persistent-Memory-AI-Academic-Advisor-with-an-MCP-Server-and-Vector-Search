@@ -1,9 +1,7 @@
-version: '3.8'
-
 services:
   mcp_server:
     build:
-      context: ./mcp_server
+      context: ./src/mcp_server
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
@@ -21,7 +19,7 @@ services:
 
   agent_service:
     build:
-      context: ./agent
+      context: ./src/agent
       dockerfile: Dockerfile
     depends_on:
       mcp_server:
