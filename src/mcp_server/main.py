@@ -250,3 +250,58 @@ def vector_count():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+# ────────────────────────────── bulk memory_write (batch) ──────────────────────────────
+
+@app.post("/invoke/memory_write_batch", status_code=201)
+def invoke_memory_write_batch(requests_list: list[MemoryWriteRequest]):
+    """
+    Batch write multiple memories at once using efficient embedding batching.
+    Ideal for indexing large amounts of historical conversation data.
+    """
+    from vector_store import store_embeddings_batch
+
+    session = get_session()
+    memory_ids = []
+    texts_to_embed = []
+    embed_ids = []
+    embed_metadatas = []
+
+    try:
+        for request in requests_list:
+            if request.memory_type == "conversation":
+                conv = Conversation(**request.data)
+                existing = session.query(ConversationTable).filter_by(
+                    user_id=conv.user_id, turn_id=conv.turn_id).first()
+                memory_id = f"{conv.user_id}_{conv.turn_id}"
+                if existing:
+                    existing.role = conv.role
+                    existing.content = conv.content
+                    existing.timestamp = conv.timestamp
+                else:
+                    session.add(ConversationTable(
+                        user_id=conv.user_id, turn_id=conv.turn_id,
+                        role=conv.role, content=conv.content, timestamp=conv.timestamp
+                    ))
+                memory_ids.append(memory_id)
+                texts_to_embed.append(conv.content)
+                embed_ids.append(memory_id)
+                embed_metadatas.append({
+                    "user_id": conv.user_id, "turn_id": str(conv.turn_id),
+                    "role": conv.role, "memory_type": "conversation"
+                })
+
+        session.commit()
+
+        # Batch embed and store all at once
+        if texts_to_embed:
+            store_embeddings_batch(embed_ids, texts_to_embed, embed_metadatas)
+
+        return {"status": "success", "memory_ids": memory_ids, "count": len(memory_ids)}
+
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=422, detail=str(e))
+    finally:
+        session.close()
